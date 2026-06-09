@@ -23,3 +23,11 @@ Base.metadata.create_all(bind=engine)
 @app.get("/")
 def root():
     return {"message": "Hello World"}   
+
+@app.post("/structure")
+def create_fir_record_structure():
+    return {"message": "FIR record structure created successfully"}
+
+@app.post("/detect-mismatch")
+def detect_mismatch():
+    return {"message": "Mismatch detected successfully"}
