@@ -45,7 +45,7 @@ Follow these steps to clone the project, install dependencies, and start the Fas
    python -m pip install -r requirements.txt
    ```
 
-   If you prefer a virtual environment:
+   If you prefer a virtual environment(optional):
 
    ```bash
    python -m venv .venv
