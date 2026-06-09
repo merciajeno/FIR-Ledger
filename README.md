@@ -27,4 +27,45 @@ FIR Ledger is a system design that lets people file complaints and police office
 
 The goal is to reduce FIR stalling and increase transparency by creating an auditable chain of complaints and progress updates.
 
+## Getting Started
+
+Follow these steps to clone the project, install dependencies, and start the FastAPI backend.
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/merciajeno/FIR-Ledger.git
+   cd FIR-Ledger
+   ```
+
+2. Install Python dependencies:
+
+   ```bash
+   cd backend
+   python -m pip install -r requirements.txt
+   ```
+
+   If you prefer a virtual environment:
+
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate   # Windows
+   # or
+   source .venv/bin/activate  # macOS/Linux
+   python -m pip install -r requirements.txt
+   ```
+
+3. Start the FastAPI server:
+
+   ```bash
+   uvicorn main:app --reload
+   ```
+
+4. Open the app in your browser:
+
+   - `http://127.0.0.1:8000`
+   - API docs: `http://127.0.0.1:8000/docs`
+
+> Note: `requirements.txt` is in the `backend` folder, so install dependencies from there.
+
 
