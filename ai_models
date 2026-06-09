@@ -1,0 +1,10 @@
+# AI Models for FIR Ledger
+
+## ai_structurer.ipynb
+Converts free text to structured complaint JSON using FLAN-T5-small.
+
+## mismatch_detector.ipynb
+Compares citizen complaint vs police report. Returns mismatch score 0-1.
+
+## How to run
+Open in Google Colab → Runtime → Run all
