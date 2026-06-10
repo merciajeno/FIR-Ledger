@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import Base, FIRLog, FIRRecord, FIRStatusEnum, Officers, People,CitizenLogin, OfficerLogin,FIRSubmission
+from models import Base, FIRLog, FIRRecord, FIRStatusEnum, Officers, People,CitizenLogin, OfficerLogin,FIRSubmission,UpdateStatusPayload
 import models
 app = FastAPI()
 app.add_middleware(
@@ -182,17 +182,17 @@ def submit_fir(payload: FIRSubmission, db: Session = Depends(get_db)):
 # -----------------------------------------------------------------------------
 
 @app.post("/api/v1/officer/update-status")
-def update_fir_status(fir_id: int, officer_id: int, target_status: models.FIRStatusEnum, action_details: str, db: Session = Depends(get_db)):
+def update_fir_status(payload: UpdateStatusPayload, db: Session = Depends(get_db)):
     """
     Appends an unchangeable transaction log when modifying FIR progress states.
     """
     # 1. Pull the target FIR record
-    fir = db.query(models.FIRRecord).filter(models.FIRRecord.fir_id == fir_id).first()
+    fir = db.query(models.FIRRecord).filter(models.FIRRecord.fir_id == payload.fir_id).first()
     if not fir:
         raise HTTPException(status_code=404, detail="FIR profile not found.")
         
     # 2. Verify the officer exists in our records
-    officer = db.query(models.Officers).filter(models.Officers.officer_id == officer_id).first()
+    officer = db.query(models.Officers).filter(models.Officers.officer_id == payload.officer_id).first()
     if not officer:
         raise HTTPException(status_code=404, detail="Unauthorized: Officer credentials invalid.")
 
@@ -201,7 +201,7 @@ def update_fir_status(fir_id: int, officer_id: int, target_status: models.FIRSta
 
     try:
         # Ensure target_status is explicitly matched as a valid Enum object member
-        validated_target_status = models.FIRStatusEnum(target_status)
+        validated_target_status = models.FIRStatusEnum(payload.target_status)
 
         # 3. Build the audit log row matching your exact models.py columns
         audit_log = models.FIRLog(
@@ -209,7 +209,7 @@ def update_fir_status(fir_id: int, officer_id: int, target_status: models.FIRSta
             officer_id=officer.officer_id,
             previous_status=old_status,             # Passing the active Enum object
             new_status=validated_target_status,      # Passing the validated Enum object
-            action_taken=action_details
+            action_taken=payload.action_details
         )
         db.add(audit_log)
         

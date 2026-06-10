@@ -20,6 +20,9 @@ const officerStatusEl = document.getElementById('officer-status');
 const officerDashboard = document.getElementById('officer-dashboard');
 const officerCasesListEl = document.getElementById('officer-cases-list');
 
+let currentOfficerId = null;
+const FIR_STATUS_OPTIONS = ['PENDING', 'INVESTIGATING', 'CLOSED'];
+
 citizenModeBtn.addEventListener('click', () => setMode('citizen'));
 officerModeBtn.addEventListener('click', () => setMode('officer'));
 submitCaseBtn.addEventListener('click', submitCaseHandler);
@@ -76,8 +79,8 @@ async function submitCaseHandler() {
     setStatus(submitStatusEl, 'Please enter your case details before submitting.', 'error');
     return;
   }
-   const stationId = document.getElementById('station-id').value.trim();
-   const phoneNumber = document.getElementById('phone-number').value.trim();
+  const stationId = document.getElementById('station-id').value.trim();
+  const phoneNumber = document.getElementById('phone-number').value.trim();
   submitCaseBtn.disabled = true;
   setStatus(submitStatusEl, 'Submitting case', 'loading');
 
@@ -185,13 +188,14 @@ async function officerLoginHandler() {
 
     const result = await response.json();
     if (result.success === false) {
-      throw new Error('Invalid station ID or password');
+      throw new Error('Invalid officer ID or password');
     }
 
+    currentOfficerId = result.officer_id;
     console.log('Officer login successful:', result);
     officerDashboard.classList.remove('hidden');
-    setStatus(officerStatusEl, `Signed in as officer ${officerId}.`, 'success');
-    fetchOfficerCases(officerId);
+    setStatus(officerStatusEl, `Signed in as officer ${result.full_name || officerId}.`, 'success');
+    fetchOfficerCases(currentOfficerId);
   } catch (error) {
     setStatus(officerStatusEl, 'Unable to load officer cases. Backend may be offline.', 'error');
     officerDashboard.classList.add('hidden');
@@ -237,7 +241,11 @@ function renderOfficerCases(cases) {
     const caseCard = document.createElement('div');
     caseCard.className = 'case-item';
 
-    // Using the exact JSON keys returned by your FastAPI backend
+    const statusOptionsHtml = FIR_STATUS_OPTIONS.map((status) => {
+      const selected = status === caseItem.current_status ? 'selected' : '';
+      return `<option value="${status}" ${selected}>${status}</option>`;
+    }).join('');
+
     caseCard.innerHTML = `
       <header>
         <strong>FIR ID: ${caseItem.fir_id}</strong>
@@ -256,9 +264,22 @@ function renderOfficerCases(cases) {
         ${caseItem.original_text}
       </div>
       
-      <button class="respond-btn" onclick="document.getElementById('update-fir-id').value = '${caseItem.fir_id}'; window.scrollTo({top: 0, behavior: 'smooth'});">
+      <button class="respond-btn" data-fir-id="${caseItem.fir_id}">
         Action This Case
       </button>
+
+      <div id="action-form-${caseItem.fir_id}" class="action-form hidden" style="margin-top: 18px;">
+        <label for="target-status-${caseItem.fir_id}">Update status</label>
+        <select id="target-status-${caseItem.fir_id}" class="target-status-select" data-fir-id="${caseItem.fir_id}" style="width:100%;border-radius:14px;border:1px solid rgba(148,163,184,.2);background:rgba(15,23,42,.6);color:#f8fafc;padding:14px 16px;margin-bottom:12px;">
+          ${statusOptionsHtml}
+        </select>
+
+        <label for="action-details-${caseItem.fir_id}">Officer notes</label>
+        <textarea id="action-details-${caseItem.fir_id}" data-case-id="${caseItem.fir_id}" placeholder="Describe action taken or next steps..." style="width:100%;min-height:100px;border-radius:14px;border:1px solid rgba(148,163,184,.2);background:rgba(15,23,42,.6);color:#f8fafc;padding:14px 16px;margin-bottom:12px;"></textarea>
+
+        <button class="send-update-btn" data-fir-id="${caseItem.fir_id}">Send update</button>
+        <div id="response-status-${caseItem.fir_id}" class="status none"></div>
+      </div>
     `;
 
     officerCasesListEl.appendChild(caseCard);
@@ -267,46 +288,71 @@ function renderOfficerCases(cases) {
 
 function handleOfficerCaseAction(event) {
   const target = event.target;
-  if (!target.matches('.respond-btn')) return;
 
-  const caseId = target.dataset.caseId;
-  const textarea = officerCasesListEl.querySelector(`textarea[data-case-id="${caseId}"]`);
-  if (!textarea) return;
-
-  const responseText = textarea.value.trim();
-  if (!responseText) {
-    const statusEl = officerCasesListEl.querySelector(`#response-status-${caseId}`);
-    if (statusEl) {
-      setStatus(statusEl, 'Please enter a response before sending.', 'error');
-    }
+  if (target.matches('.respond-btn')) {
+    const caseId = target.dataset.firId;
+    const form = officerCasesListEl.querySelector(`#action-form-${caseId}`);
+    if (form) form.classList.toggle('hidden');
     return;
   }
 
-  respondToCase(caseId, responseText, target);
+  if (target.matches('.send-update-btn')) {
+    const caseId = target.dataset.firId;
+    const actionForm = officerCasesListEl.querySelector(`#action-form-${caseId}`);
+    if (!actionForm) return;
+
+    const statusSelect = actionForm.querySelector('.target-status-select');
+    const textarea = actionForm.querySelector(`textarea[data-case-id="${caseId}"]`);
+    const targetStatus = statusSelect?.value;
+    const responseText = textarea?.value.trim();
+
+    if (!responseText) {
+      const statusEl = officerCasesListEl.querySelector(`#response-status-${caseId}`);
+      if (statusEl) {
+        setStatus(statusEl, 'Please enter a response before sending.', 'error');
+      }
+      return;
+    }
+
+    respondToCase(caseId, targetStatus, responseText, target);
+    return;
+  }
 }
 
-async function respondToCase(caseId, responseText, button) {
+async function respondToCase(caseId, targetStatus, actionDetails, button) {
   const statusEl = officerCasesListEl.querySelector(`#response-status-${caseId}`);
   if (!statusEl) return;
 
+  if (!currentOfficerId) {
+    setStatus(statusEl, 'Officer is not signed in. Please log in again.', 'error');
+    return;
+  }
+
   button.disabled = true;
-  setStatus(statusEl, 'Sending response�', 'loading');
+  setStatus(statusEl, 'Sending response...', 'loading');
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/v1/officer/update-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ caseId, response: responseText })
+      body: JSON.stringify({
+        fir_id: parseInt(caseId, 10),
+        officer_id: currentOfficerId,
+        target_status: targetStatus,
+        action_details: actionDetails
+      })
     });
 
     if (!response.ok) {
-      throw new Error('Backend returned an error');
+      const errorData = await response.json().catch(() => null);
+      const errorMessage = errorData?.detail || 'Backend returned an error';
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
     setStatus(statusEl, result.message || 'Response submitted successfully.', 'success');
   } catch (error) {
-    setStatus(statusEl, 'Unable to send response. Try again when online.', 'error');
+    setStatus(statusEl, `Unable to send response: ${error.message}`, 'error');
     console.error('Response failed:', error);
   } finally {
     button.disabled = false;

@@ -101,3 +101,9 @@ class FIRSubmission(BaseModel):
     phone_number: str
     text: str
     station_id: str
+
+class UpdateStatusPayload(BaseModel):
+    fir_id: int
+    officer_id: int
+    target_status: str
+    action_details: str
