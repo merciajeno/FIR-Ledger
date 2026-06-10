@@ -1,6 +1,6 @@
 from datetime import datetime
 import enum
-
+from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -87,3 +87,17 @@ class FIRLog(Base):
 
     fir_record = relationship("FIRRecord", back_populates="logs")
     officer = relationship("Officers", back_populates="logs")
+
+
+class CitizenLogin(BaseModel):
+    phone_number: str
+    password: str
+
+class OfficerLogin(BaseModel):
+    officer_id: int
+    password: str
+
+class FIRSubmission(BaseModel):
+    phone_number: str
+    text: str
+    station_id: str

@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://localhost:3000';
+const BACKEND_URL = 'http://localhost:8000';
 
 const citizenModeBtn = document.getElementById('citizen-mode');
 const officerModeBtn = document.getElementById('officer-mode');
@@ -76,15 +76,16 @@ async function submitCaseHandler() {
     setStatus(submitStatusEl, 'Please enter your case details before submitting.', 'error');
     return;
   }
-
+   const stationId = document.getElementById('station-id').value.trim();
+   const phoneNumber = document.getElementById('phone-number').value.trim();
   submitCaseBtn.disabled = true;
-  setStatus(submitStatusEl, 'Submitting case…', 'loading');
+  setStatus(submitStatusEl, 'Submitting case', 'loading');
 
   const caseCode = await generateCaseCode(description + Date.now());
-  const payload = { description, caseCode };
+  const payload = { phone_number: phoneNumber, text: description, station_id: stationId };
 
   try {
-    const response = await fetch(`${BACKEND_URL}/cases/submit`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/citizen/submit-fir`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -130,10 +131,10 @@ async function checkProgressHandler() {
   }
 
   checkProgressBtn.disabled = true;
-  setStatus(progressResultEl, 'Checking progress…', 'loading');
+  setStatus(progressResultEl, 'Checking progress', 'loading');
 
   try {
-    const response = await fetch(`${BACKEND_URL}/cases/progress?code=${encodeURIComponent(code)}`);
+    const response = await fetch(`${BACKEND_URL}/api/v1/citizen/progress?code=${encodeURIComponent(code)}`);
     if (!response.ok) {
       throw new Error('Backend returned an error');
     }
@@ -160,19 +161,22 @@ async function checkProgressHandler() {
 
 async function officerLoginHandler() {
   const officerId = officerIdEl.value.trim();
+  const password = document.getElementById('officer-password').value.trim();
   if (!officerId) {
-    setStatus(officerStatusEl, 'Please enter your officer ID.', 'error');
+    setStatus(officerStatusEl, 'Please enter your station ID.', 'error');
     return;
   }
 
   officerLoginBtn.disabled = true;
-  setStatus(officerStatusEl, 'Signing in…', 'loading');
+  setStatus(officerStatusEl, 'Signing inï¿½', 'loading');
+  console.log('Attempting officer login with ID:', officerId);
+  console.log('Password provided:', password);
 
   try {
-    const response = await fetch(`${BACKEND_URL}/officer/login`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/officer/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ officerId })
+      body: JSON.stringify({ officer_id: officerId, password: password })
     });
 
     if (!response.ok) {
@@ -181,12 +185,13 @@ async function officerLoginHandler() {
 
     const result = await response.json();
     if (result.success === false) {
-      throw new Error('Invalid officer ID');
+      throw new Error('Invalid station ID or password');
     }
 
+    console.log('Officer login successful:', result);
     officerDashboard.classList.remove('hidden');
     setStatus(officerStatusEl, `Signed in as officer ${officerId}.`, 'success');
-    renderOfficerCases(result.cases || []);
+    fetchOfficerCases(officerId);
   } catch (error) {
     setStatus(officerStatusEl, 'Unable to load officer cases. Backend may be offline.', 'error');
     officerDashboard.classList.add('hidden');
@@ -196,13 +201,34 @@ async function officerLoginHandler() {
   }
 }
 
+async function fetchOfficerCases(officerId) {
+  const listEl = document.getElementById('officer-cases-list');
+  listEl.innerHTML = '<p class="status loading">Loading your cases...</p>';
+
+  try {
+    // Call the specific endpoint we made to get the officer's cases
+    const response = await fetch(`${BACKEND_URL}/api/v1/officer/my-cases?officer_id=${officerId}`);
+
+    if (response.ok) {
+      const data = await response.json();
+      // Pass the real array of cases to your render function
+      renderOfficerCases(data.cases);
+    } else {
+      listEl.innerHTML = '<p class="status error">Failed to load cases from database.</p>';
+    }
+  } catch (error) {
+    listEl.innerHTML = '<p class="status error">Server error while loading cases.</p>';
+  }
+}
+
 function renderOfficerCases(cases) {
+  const officerCasesListEl = document.getElementById('officer-cases-list');
   officerCasesListEl.innerHTML = '';
 
   if (!Array.isArray(cases) || cases.length === 0) {
     const placeholder = document.createElement('p');
     placeholder.className = 'status none';
-    placeholder.textContent = 'No assigned cases were returned. Check your officer ID or refresh when online.';
+    placeholder.textContent = 'No active cases in your queue. You are all caught up!';
     officerCasesListEl.appendChild(placeholder);
     return;
   }
@@ -210,18 +236,31 @@ function renderOfficerCases(cases) {
   cases.forEach((caseItem) => {
     const caseCard = document.createElement('div');
     caseCard.className = 'case-item';
+
+    // Using the exact JSON keys returned by your FastAPI backend
     caseCard.innerHTML = `
       <header>
-        <strong>${caseItem.caseId || 'Case'}</strong>
-        <span>Status: ${caseItem.status || 'Pending'}</span>
+        <strong>FIR ID: ${caseItem.fir_id}</strong>
+        <span>Status: ${caseItem.current_status}</span>
       </header>
-      <p><strong>Code:</strong> ${caseItem.caseCode || 'N/A'}</p>
-      <p>${caseItem.description || 'No description available.'}</p>
-      <label>Response</label>
-      <textarea class="response-input" data-case-id="${caseItem.caseId || ''}" placeholder="Write a response for this case..."></textarea>
-      <button class="respond-btn" data-case-id="${caseItem.caseId || ''}">Send response</button>
-      <div id="response-status-${caseItem.caseId || ''}" class="status none"></div>
+      
+      <p style="font-size: 0.85em; color: #94a3b8; word-break: break-all; margin-bottom: 8px;">
+        <strong>Secure Hash:</strong> ${caseItem.fir_hash}
+      </p>
+      
+      <p style="margin-bottom: 12px;">
+        <strong>Citizen Phone:</strong> ${caseItem.citizen_phone}
+      </p>
+      
+      <div style="background: rgba(15, 23, 42, 0.5); padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(148, 163, 184, 0.1);">
+        ${caseItem.original_text}
+      </div>
+      
+      <button class="respond-btn" onclick="document.getElementById('update-fir-id').value = '${caseItem.fir_id}'; window.scrollTo({top: 0, behavior: 'smooth'});">
+        Action This Case
+      </button>
     `;
+
     officerCasesListEl.appendChild(caseCard);
   });
 }
@@ -251,10 +290,10 @@ async function respondToCase(caseId, responseText, button) {
   if (!statusEl) return;
 
   button.disabled = true;
-  setStatus(statusEl, 'Sending response…', 'loading');
+  setStatus(statusEl, 'Sending responseï¿½', 'loading');
 
   try {
-    const response = await fetch(`${BACKEND_URL}/officer/respond`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/officer/update-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caseId, response: responseText })
