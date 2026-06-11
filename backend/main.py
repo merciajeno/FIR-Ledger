@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -254,6 +254,28 @@ def view_system_logs(requester_officer_id: int, db: Session = Depends(get_db)):
     master_logs = db.query(models.FIRLog).order_by(models.FIRLog.timestamp.desc()).all()
     
     return master_logs
+
+
+
+
+def get_last_update_for_case(db: Session, fir_id: int):
+    last_log = (
+        db.query(models.FIRLog)
+        .filter(models.FIRLog.fir_id == fir_id)
+        .order_by(models.FIRLog.timestamp.desc())
+        .first()
+    )
+    if last_log:
+        return last_log.timestamp
+    fir = db.query(models.FIRRecord).filter(models.FIRRecord.fir_id == fir_id).first()
+    return fir.created_at if fir else datetime.utcnow()
+
+
+def is_case_stalled(fir, last_update, threshold_days: int = 3):
+    if fir.current_status != models.FIRStatusEnum.PENDING:
+        return False
+    return (datetime.utcnow() - last_update) >= timedelta(days=threshold_days)
+
 
 @app.get("/api/v1/officer/my-cases")
 def get_officer_cases(officer_id: int, db: Session = Depends(get_db)):
